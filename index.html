@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>NCGCL — Fixed Income Portfolio</title>
+<script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Georgia,'Times New Roman',serif;background:#F0EDE8;color:#2C3E50;min-height:100vh}
+::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:#EDE9E1}::-webkit-scrollbar-thumb{background:#C8D4E0;border-radius:3px}
+.tab{transition:all .2s}.tab:hover{background:rgba(3,80,118,.1)!important}
+.hrow{transition:background .15s;cursor:pointer}.hrow:hover{background:#EDE9E1!important}
+.kcard{transition:transform .2s,box-shadow .2s}.kcard:hover{transform:translateY(-2px);box-shadow:0 8px 24px rgba(3,80,118,.12)}
+.flash{animation:fg 1.4s ease}@keyframes fg{0%{background:#39A94940}100%{background:transparent}}
+.mov{animation:su .25s ease}@keyframes su{from{transform:translateY(18px);opacity:0}to{transform:translateY(0);opacity:1}}
+input:focus,select:focus{outline:2px solid #035076;outline-offset:1px}
+input[type=range]{accent-color:#035076}
+.spin{animation:sp 1s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useMemo,useCallback}=React;
+const {AreaChart,Area,BarChart,Bar,LineChart,Line,PieChart,Pie,Cell,
+       XAxis,YAxis,CartesianGrid,Tooltip,Legend,ResponsiveContainer,ReferenceLine}=Recharts;
+
+/* ── CONFIG: set your Railway API URL here after deploying ── */
+const API_URL = ""https://ncgcl-fi.onrender.com";
+/* If API_URL is empty, the app runs in offline/demo mode with built-in data */
+
+/* ── BRAND ── */
+const B={
+  cerulean:"#035076",ceruleanL:"#0A6FA0",ceruleanD:"#022E45",
+  green:"#39A949",greenD:"#2A7D37",
+  cream:"#F7F4EF",parchment:"#EDE9E1",surface:"#F0EDE8",
+  white:"#FFFFFF",border:"#D5CFC5",ash:"#8A9BB0",lightAsh:"#C8D4E0",slate:"#2C3E50",
+  danger:"#C0392B",warning:"#E67E22",success:"#27AE60",
+};
+const TYPE_C={"PIB":B.cerulean,"Corporate Bond":B.green,"Placement":B.warning,
+  "Sukuk":"#8E44AD","Mutual Fund":"#16A085","Commercial Paper":"#E74C3C","T-Bill":"#2980B9"};
+const CHART_C=[B.cerulean,B.green,B.warning,"#8E44AD","#E74C3C","#16A085","#2980B9","#F39C12"];
+
+/* ── DEMO DATA (used when no API is configured) ── */
+const DEMO=[
+  {id:"H001",name:"GoP PIB 3Y",issuer:"Government of Pakistan",instrument_type:"PIB",face_value:500e6,coupon_rate:.1325,coupon_frequency:2,maturity_date:"2026-06-15",purchase_date:"2023-06-15",purchase_price:97.85,purchase_yield:.138,current_price:101.42,current_yield:.121,rating:"Sovereign",sector:"Government",is_funded:false,repo_rate:null,custodian:"SBP",accrual_days:45,status:"active"},
+  {id:"H002",name:"NCCPL 2Y Bond",issuer:"NCCPL",instrument_type:"Corporate Bond",face_value:1000e6,coupon_rate:.145,coupon_frequency:2,maturity_date:"2025-12-31",purchase_date:"2023-12-31",purchase_price:98.65,purchase_yield:.148,current_price:100.87,current_yield:.138,rating:"AA",sector:"Financial Services",is_funded:false,repo_rate:null,custodian:"CDC",accrual_days:62,status:"active"},
+  {id:"H003",name:"UBL TDR 90D",issuer:"United Bank Limited",instrument_type:"Placement",face_value:250e6,coupon_rate:.134,coupon_frequency:2,maturity_date:"2026-03-25",purchase_date:"2025-12-25",purchase_price:100,purchase_yield:.134,current_price:100,current_yield:.134,rating:"AA+",sector:"Banking",is_funded:false,repo_rate:null,custodian:"UBL",accrual_days:82,status:"active"},
+  {id:"H004",name:"KSBL Sukuk II",issuer:"K-Electric Sukuk",instrument_type:"Sukuk",face_value:500e6,coupon_rate:.1415,coupon_frequency:2,maturity_date:"2027-03-10",purchase_date:"2024-03-10",purchase_price:98.2,purchase_yield:.145,current_price:101.15,current_yield:.135,rating:"AA-",sector:"Energy",is_funded:true,repo_rate:.125,custodian:"CDC",accrual_days:55,status:"active"},
+  {id:"H005",name:"MCBFSL Income Fund",issuer:"MCB Funds",instrument_type:"Mutual Fund",face_value:500e6,coupon_rate:.129,coupon_frequency:2,maturity_date:null,purchase_date:"2024-01-15",purchase_price:100,purchase_yield:.129,current_price:101.85,current_yield:.131,rating:"AM2+",sector:"Fund",is_funded:false,repo_rate:null,custodian:"MCB Funds",accrual_days:0,status:"active"},
+  {id:"H006",name:"PCCPL CP 3M",issuer:"Pakistan Cables",instrument_type:"Commercial Paper",face_value:1000e6,coupon_rate:.1355,coupon_frequency:2,maturity_date:"2026-05-01",purchase_date:"2026-01-30",purchase_price:99.5,purchase_yield:.1355,current_price:100.25,current_yield:.133,rating:"A+",sector:"Industrial",is_funded:false,repo_rate:null,custodian:"CDC",accrual_days:46,status:"active"},
+  {id:"H007",name:"GoP T-Bill 6M",issuer:"Government of Pakistan",instrument_type:"T-Bill",face_value:500e6,coupon_rate:0,coupon_frequency:2,maturity_date:"2026-08-15",purchase_date:"2026-02-15",purchase_price:93.95,purchase_yield:.1285,current_price:94.25,current_yield:.1265,rating:"Sovereign",sector:"Government",is_funded:false,repo_rate:null,custodian:"SBP",accrual_days:30,status:"active"},
+];
+
+/* ── FI CALC ENGINE (client-side, mirrors server) ── */
+const FI={
+  bondPrice(F,c,y,T,m=2){if(T<=0)return F;const n=Math.round(T*m),C=F*c/m,r=y/m;if(!r)return F+C*n;let pv=0;for(let t=1;t<=n;t++)pv+=C/Math.pow(1+r,t);return pv+F/Math.pow(1+r,n);},
+  macDur(F,c,y,T,m=2){if(T<=0)return 0;const n=Math.round(T*m),C=F*c/m,r=y/m;let wt=0,pv=0;for(let t=1;t<=n;t++){const cf=C/Math.pow(1+r,t);wt+=(t/m)*cf;pv+=cf;}const fv=F/Math.pow(1+r,n);return(wt+T*fv)/(pv+fv);},
+  modDur(mac,y,m=2){return mac/(1+y/m);},
+  pvbp(mv,md){return mv*md*.0001;},
+  accInt(F,c,days,m=2){return(F*c/m)*(days/(365/m));},
+  yearsTo(d){return d?Math.max(.01,(new Date(d)-new Date())/(1000*60*60*24*365)):.5;},
+  enrich(h){
+    const F=+h.face_value,c=+h.coupon_rate,y=+h.current_yield||+h.purchase_yield;
+    const p=+h.current_price||+h.purchase_price,m=+h.coupon_frequency||2;
+    const T=this.yearsTo(h.maturity_date);
+    const MV=F*(p/100),CV=F*(+h.purchase_price/100);
+    let dur=0,md=0,pv=0;
+    if(["Placement","Mutual Fund"].includes(h.instrument_type)){dur=h.instrument_type==="Placement"?T*.5:.08;md=dur/(1+y/2);pv=this.pvbp(MV,md);}
+    else if(h.instrument_type==="T-Bill"){dur=T;md=T/(1+y);pv=this.pvbp(MV,md);}
+    else{dur=this.macDur(F,c,y,T,m);md=this.modDur(dur,y,m);pv=this.pvbp(MV,md);}
+    const ai=!["T-Bill","Mutual Fund"].includes(h.instrument_type)?this.accInt(F,c||y,+h.accrual_days||0,m):0;
+    const cs=h.is_funded?(y-(+h.repo_rate||0)):null;
+    return{...h,T,MV,CV,uPnL:MV-CV,uPnLPct:((MV-CV)/CV)*100,
+      yield:y,duration:dur,modDur:md,pvbp:pv,accInt:ai,
+      cs,dc:cs?MV*cs/365:null};
+  },
+  portfolio(hs){
+    const tMV=hs.reduce((s,h)=>s+h.MV,0);
+    if(!tMV)return{totalMV:0,totalCV:0,wYield:0,wDur:0,totPVBP:0,totUPnL:0,totAI:0};
+    return{totalMV:tMV,totalCV:hs.reduce((s,h)=>s+h.CV,0),
+      wYield:hs.reduce((s,h)=>s+h.yield*h.MV,0)/tMV,
+      wDur:hs.reduce((s,h)=>s+h.duration*h.MV,0)/tMV,
+      totPVBP:hs.reduce((s,h)=>s+h.pvbp,0),
+      totUPnL:hs.reduce((s,h)=>s+h.uPnL,0),
+      totAI:hs.reduce((s,h)=>s+h.accInt,0)};
+  }
+};
+
+/* ── FORMAT ── */
+const f={
+  pkrM:v=>`PKR ${(v/1e6).toFixed(1)}M`,
+  pkrB:v=>v>=1e9?`PKR ${(v/1e9).toFixed(2)}B`:`PKR ${(v/1e6).toFixed(0)}M`,
+  pct:(v,d=2)=>`${(v*100).toFixed(d)}%`,
+  yrs:v=>`${v.toFixed(2)}y`,
+};
+
+/* ── NAV DEMO DATA ── */
+function makeNAV(){const d=[];let n=100;const b=new Date("2024-01-01");for(let i=0;i<78;i++){const dt=new Date(b);dt.setDate(dt.getDate()+i*5);n+=(Math.random()-.35)*.18;d.push({date:dt.toISOString().slice(0,10),nav:+n.toFixed(4),bench:+(100+i*.052+(Math.random()-.5)*.08).toFixed(4)});}return d;}
+const NAV_DEMO=makeNAV();
+
+/* ── API CLIENT ── */
+const api={
+  async get(path){
+    if(!API_URL)return null;
+    const r=await fetch(API_URL+path);
+    if(!r.ok)throw new Error(await r.text());
+    return r.json();
+  },
+  async post(path,body){
+    if(!API_URL)return null;
+    const r=await fetch(API_URL+path,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    if(!r.ok)throw new Error(await r.text());
+    return r.json();
+  },
+  async put(path,body){
+    if(!API_URL)return null;
+    const r=await fetch(API_URL+path,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    if(!r.ok)throw new Error(await r.text());
+    return r.json();
+  },
+  async del(path){
+    if(!API_URL)return null;
+    const r=await fetch(API_URL+path,{method:"DELETE"});
+    if(!r.ok)throw new Error(await r.text());
+    return r.json();
+  },
+};
+
+/* ══════════════════════════════════════════════
+   MAIN APP
+══════════════════════════════════════════════ */
+function App(){
+  const[rawHoldings,setRawHoldings]=useState([]);
+  const[loading,setLoading]=useState(true);
+  const[apiConnected,setApiConnected]=useState(false);
+  const[tab,setTab]=useState("dashboard");
+  const[sel,setSel]=useState(null);
+  const[showAdd,setShowAdd]=useState(false);
+  const[editH,setEditH]=useState(null);
+  const[shift,setShift]=useState(0);
+  const[flash,setFlash]=useState({});
+  const[saving,setSaving]=useState({});
+  const[navData,setNavData]=useState(NAV_DEMO);
+  const[apiError,setApiError]=useState(null);
+
+  /* load holdings */
+  const loadHoldings=useCallback(async()=>{
+    setLoading(true);
+    setApiError(null);
+    try{
+      if(API_URL){
+        const data=await api.get("/api/holdings");
+        if(data){
+          setRawHoldings(data.holdings);
+          setApiConnected(true);
+          // also try nav
+          try{const n=await api.get("/api/nav?days=90");if(n&&n.length>5)setNavData(n.map(r=>({date:r.nav_date,nav:+r.portfolio_nav,bench:+r.portfolio_nav-.5+(Math.random()-.5)*.2})));}catch(e){}
+        }
+      }else{
+        setRawHoldings(DEMO);
+        setApiConnected(false);
+      }
+    }catch(e){
+      setApiError(e.message);
+      setRawHoldings(DEMO);
+      setApiConnected(false);
+    }finally{setLoading(false);}
+  },[]);
+
+  useEffect(()=>{loadHoldings();},[loadHoldings]);
+
+  const hs=useMemo(()=>rawHoldings.map(h=>FI.enrich(h)),[rawHoldings]);
+  const port=useMemo(()=>FI.portfolio(hs),[hs]);
+
+  /* price update */
+  const updatePrice=useCallback(async(id,price)=>{
+    setSaving(s=>({...s,[id]:true}));
+    setRawHoldings(r=>r.map(h=>h.id===id?{...h,current_price:+price}:h));
+    try{
+      await api.post("/api/prices",{holding_id:id,clean_price:+price});
+      setFlash(f=>({...f,[id]:true}));
+      setTimeout(()=>setFlash(f=>({...f,[id]:false})),1500);
+    }catch(e){}
+    setSaving(s=>({...s,[id]:false}));
+  },[]);
+
+  /* delete */
+  const deleteH=useCallback(async(id)=>{
+    try{await api.del(`/api/holdings/${id}`);}catch(e){}
+    setRawHoldings(r=>r.filter(h=>h.id!==id));
+    setSel(null);
+  },[]);
+
+  /* add */
+  const addH=useCallback(async(form)=>{
+    try{
+      const res=await api.post("/api/holdings",{
+        ...form,
+        coupon_rate:+form.coupon_rate,face_value:+form.face_value,
+        purchase_price:+form.purchase_price,purchase_yield:+form.purchase_yield,
+        current_price:+form.current_price||+form.purchase_price,
+        current_yield:+form.current_yield||+form.purchase_yield,
+        accrual_days:+form.accrual_days||0,
+        is_funded:!!form.is_funded,repo_rate:form.repo_rate?+form.repo_rate:null,
+      });
+      if(res?.id){
+        const newH={...form,id:res.id,instrument_type:form.type||form.instrument_type};
+        setRawHoldings(r=>[...r,newH]);
+      }
+    }catch(e){
+      // fallback: add locally with temp id
+      setRawHoldings(r=>[...r,{...form,id:"H"+Date.now(),instrument_type:form.type||form.instrument_type}]);
+    }
+    setShowAdd(false);
+  },[]);
+
+  /* edit */
+  const saveEdit=useCallback(async(form)=>{
+    try{await api.put(`/api/holdings/${form.id}`,{
+      ...form,instrument_type:form.type||form.instrument_type,
+      coupon_rate:+form.coupon_rate,face_value:+form.face_value,
+      current_price:+form.current_price,current_yield:+form.current_yield,
+      accrual_days:+form.accrual_days||0,
+      is_funded:!!form.is_funded,repo_rate:form.repo_rate?+form.repo_rate:null,
+    });}catch(e){}
+    setRawHoldings(r=>r.map(h=>h.id===form.id?{...h,...form,instrument_type:form.type||form.instrument_type}:h));
+    setEditH(null);
+  },[]);
+
+  /* revalue */
+  const runRevalue=useCallback(async()=>{
+    setSaving(s=>({...s,_reval:true}));
+    try{
+      await api.post("/api/revalue",{date:new Date().toISOString().slice(0,10)});
+      await loadHoldings();
+    }catch(e){}
+    setSaving(s=>({...s,_reval:false}));
+  },[loadHoldings]);
+
+  const scen=useMemo(()=>{
+    if(!shift)return null;
+    const s=shift/100;
+    const newMV=hs.reduce((sum,h)=>{
+      const ny=h.yield+s;let np=h.current_price||h.purchase_price;
+      if(!["Placement","Mutual Fund"].includes(h.instrument_type))
+        np=FI.bondPrice(+h.face_value,+h.coupon_rate||h.yield,ny,h.T)/+h.face_value*100;
+      return sum+(+h.face_value)*(np/100);
+    },0);
+    return{mvChange:newMV-port.totalMV,pct:((newMV-port.totalMV)/port.totalMV)*100};
+  },[shift,hs,port]);
+
+  const durationLadder=useMemo(()=>[
+    {label:"0-3M",min:0,max:.25},{label:"3-6M",min:.25,max:.5},
+    {label:"6-12M",min:.5,max:1},{label:"1-2Y",min:1,max:2},
+    {label:"2-3Y",min:2,max:3},{label:"3Y+",min:3,max:100},
+  ].map(b=>({...b,value:hs.filter(h=>h.T>=b.min&&h.T<b.max).reduce((s,h)=>s+h.MV,0)})),[hs]);
+
+  const concAlerts=useMemo(()=>hs.filter(h=>port.totalMV&&h.MV/port.totalMV>.2),[hs,port]);
+
+  const TABS=["dashboard","holdings","analytics","attribution","risk","carry","scenarios"];
+
+  if(loading)return(
+    <div style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100vh",flexDirection:"column",gap:12}}>
+      <div className="spin" style={{width:32,height:32,border:`3px solid ${B.border}`,borderTopColor:B.cerulean,borderRadius:"50%"}}/>
+      <div style={{fontSize:13,color:B.ash}}>Connecting to portfolio…</div>
+    </div>
+  );
+
+  return(
+    <div>
+      {/* HEADER */}
+      <header style={{background:B.cerulean,borderBottom:`3px solid ${B.green}`,padding:"0 24px",display:"flex",alignItems:"center",justifyContent:"space-between",height:60,position:"sticky",top:0,zIndex:100,boxShadow:"0 2px 12px rgba(0,0,0,.2)"}}>
+        <div style={{display:"flex",alignItems:"center",gap:12}}>
+          <div style={{width:32,height:32,background:B.green,borderRadius:4,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,color:"#fff",fontSize:13}}>NC</div>
+          <div>
+            <div style={{color:"#fff",fontWeight:700,fontSize:13,letterSpacing:".5px"}}>NCGCL</div>
+            <div style={{color:B.lightAsh,fontSize:9,letterSpacing:"1px",textTransform:"uppercase"}}>Fixed Income Portfolio</div>
+          </div>
+          <div style={{marginLeft:8,fontSize:10,padding:"2px 8px",borderRadius:3,background:apiConnected?`${B.green}30`:`${B.warning}30`,color:apiConnected?B.green:B.warning,border:`1px solid ${apiConnected?B.green:B.warning}40`}}>
+            {apiConnected?"● Live":"● Demo"}
+          </div>
+        </div>
+        <div style={{display:"flex",gap:2,flexWrap:"wrap"}}>
+          {TABS.map(t=>(
+            <button key={t} className="tab" onClick={()=>setTab(t)} style={{padding:"5px 11px",background:tab===t?B.green:"transparent",color:tab===t?"#fff":B.lightAsh,border:"none",borderRadius:4,cursor:"pointer",fontSize:11,fontWeight:tab===t?700:400,fontFamily:"Georgia,serif",textTransform:"capitalize"}}>
+              {t}
+            </button>
+          ))}
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          {apiConnected&&(
+            <button onClick={runRevalue} disabled={saving._reval} style={{background:`${B.ceruleanL}`,color:"#fff",border:"none",borderRadius:4,padding:"6px 12px",cursor:"pointer",fontSize:11,fontFamily:"Georgia,serif",opacity:saving._reval?.6:1}}>
+              {saving._reval?"Revaluing…":"↻ Revalue"}
+            </button>
+          )}
+          <span style={{color:B.lightAsh,fontSize:11}}>{new Date().toLocaleDateString("en-PK",{day:"2-digit",month:"short",year:"numeric"})}</span>
+          <button onClick={()=>setShowAdd(true)} style={{background:B.green,color:"#fff",border:"none",borderRadius:4,padding:"6px 13px",cursor:"pointer",fontSize:11,fontWeight:700,fontFamily:"Georgia,serif"}}>+ Add</button>
+        </div>
+      </header>
+
+      {/* API ERROR */}
+      {apiError&&(
+        <div style={{background:`${B.warning}15`,borderBottom:`1px solid ${B.warning}30`,borderLeft:`4px solid ${B.warning}`,padding:"7px 24px",fontSize:12}}>
+          ⚠️ Could not reach API ({apiError}) — showing demo data.
+          {API_URL?" Check your Railway URL in the HTML file.":"  Set API_URL at the top of this file after deploying Railway."}
+        </div>
+      )}
+      {concAlerts.length>0&&(
+        <div style={{background:`${B.danger}10`,borderBottom:`1px solid ${B.danger}20`,borderLeft:`4px solid ${B.danger}`,padding:"7px 24px",fontSize:12}}>
+          ⚠️ Concentration alert: {concAlerts.map(h=>h.name).join(", ")} exceed 20% portfolio weight
+        </div>
+      )}
+
+      <main style={{padding:"18px 24px",maxWidth:1560,margin:"0 auto"}}>
+        {tab==="dashboard"&&<Dashboard hs={hs} port={port} durationLadder={durationLadder} navData={navData}/>}
+        {tab==="holdings"&&<Holdings hs={hs} port={port} sel={sel} setSel={setSel} flash={flash} saving={saving} updatePrice={updatePrice} deleteH={deleteH} setEditH={setEditH}/>}
+        {tab==="analytics"&&<Analytics hs={hs} port={port}/>}
+        {tab==="attribution"&&<Attribution hs={hs} port={port}/>}
+        {tab==="risk"&&<Risk hs={hs} port={port}/>}
+        {tab==="carry"&&<Carry hs={hs}/>}
+        {tab==="scenarios"&&<Scenarios hs={hs} port={port} shift={shift} setShift={setShift} scen={scen}/>}
+      </main>
+
+      {showAdd&&<Modal mode="add" onClose={()=>setShowAdd(false)} onSave={addH}/>}
+      {editH&&<Modal mode="edit" initial={editH} onClose={()=>setEditH(null)} onSave={saveEdit}/>}
+    </div>
+  );
+}
+
+/* ── SHARED ── */
+const CC=({title,children})=>(
+  <div style={{background:B.white,border:`1px solid ${B.border}`,borderRadius:8,padding:16}}>
+    <div style={{fontSize:10,color:B.ash,letterSpacing:"1px",textTransform:"uppercase",marginBottom:12}}>{title}</div>
+    {children}
+  </div>
+);
+
+/* ── DASHBOARD ── */
+function Dashboard({hs,port,durationLadder,navData}){
+  const kpis=[
+    {l:"Portfolio AUM",v:f.pkrB(port.totalMV),s:`Cost: ${f.pkrB(port.totalCV)}`,c:B.cerulean},
+    {l:"Blended Yield",v:f.pct(port.wYield),s:"Weighted avg",c:B.green},
+    {l:"Duration",v:f.yrs(port.wDur),s:"Macaulay wtd",c:B.cerulean},
+    {l:"PVBP",v:`PKR ${(port.totPVBP/1e6).toFixed(2)}M`,s:"Per basis point",c:B.warning},
+    {l:"Unrealized P&L",v:f.pkrM(port.totUPnL),s:`${((port.totUPnL/port.totalCV||0)*100).toFixed(2)}% of cost`,c:port.totUPnL>=0?B.success:B.danger},
+    {l:"Accrued Income",v:f.pkrM(port.totAI),s:"MTD",c:B.green},
+  ];
+  return(<div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:12,marginBottom:18}}>
+      {kpis.map((k,i)=>(
+        <div key={i} className="kcard" style={{background:B.white,border:`1px solid ${B.border}`,borderRadius:8,padding:"13px 16px",borderTop:`3px solid ${k.c}`}}>
+          <div style={{fontSize:10,color:B.ash,letterSpacing:"1px",textTransform:"uppercase",marginBottom:4}}>{k.l}</div>
+          <div style={{fontSize:18,fontWeight:700,color:k.c,marginBottom:2}}>{k.v}</div>
+          <div style={{fontSize:11,color:B.ash}}>{k.s}</div>
+        </div>
+      ))}
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:16,marginBottom:16}}>
+      <CC title="Portfolio NAV vs Benchmark">
+        <ResponsiveContainer width="100%" height={175}>
+          <AreaChart data={navData}>
+            <defs><linearGradient id="ng" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor={B.cerulean} stopOpacity={.15}/><stop offset="95%" stopColor={B.cerulean} stopOpacity={0}/></linearGradient></defs>
+            <CartesianGrid strokeDasharray="3 3" stroke={B.border}/>
+            <XAxis dataKey="date" tick={{fontSize:8}} tickFormatter={v=>v.slice(5)} interval={12}/>
+            <YAxis tick={{fontSize:8}} domain={["auto","auto"]}/>
+            <Tooltip contentStyle={{fontSize:11,fontFamily:"Georgia,serif"}}/>
+            <Area type="monotone" dataKey="nav" stroke={B.cerulean} fill="url(#ng)" strokeWidth={2} dot={false} name="NAV"/>
+            <Line type="monotone" dataKey="bench" stroke={B.ash} strokeWidth={1.5} dot={false} strokeDasharray="4 4" name="Benchmark"/>
+          </AreaChart>
+        </ResponsiveContainer>
+      </CC>
+      <CC title="Composition">
+        <ResponsiveContainer width="100%" height={195}>
+          <PieChart>
+            <Pie data={hs} dataKey="MV" nameKey="name" cx="50%" cy="50%" innerRadius={50} outerRadius={78} paddingAngle={2}>
+              {hs.map((h,i)=><Cell key={h.id} fill={TYPE_C[h.instrument_type]||CHART_C[i%CHART_C.length]}/>)}
+            </Pie>
+            <Tooltip formatter={v=>f.pkrB(v)} contentStyle={{fontSize:11,fontFamily:"Georgia,serif"}}/>
+            <Legend iconSize={8} wrapperStyle={{fontSize:9}}/>
+          </PieChart>
+        </ResponsiveContainer>
+      </CC>
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"2fr 1fr",gap:16}}>
+      <CC title="Duration Ladder">
+        <ResponsiveContainer width="100%" height={148}>
+          <BarChart data={durationLadder}>
+            <CartesianGrid strokeDasharray="3 3" stroke={B.border}/>
+            <XAxis dataKey="label" tick={{fontSize:10}}/>
+            <YAxis tick={{fontSize:8}} tickFormatter={v=>`${(v/1e9).toFixed(1)}B`}/>
+            <Tooltip formatter={v=>f.pkrB(v)} contentStyle={{fontSize:11,fontFamily:"Georgia,serif"}}/>
+            <Bar dataKey="value" fill={B.cerulean} radius={[3,3,0,0]}/>
+          </BarChart>
+        </ResponsiveContainer>
+      </CC>
+      <CC title="Risk Indicators">
+        {[
+          {l:"Duration Limit",cur:port.wDur,lim:2.5,unit:"y",fmt:v=>v.toFixed(2)},
+          {l:"PVBP Limit",cur:port.totPVBP/1e6,lim:3,unit:"M",fmt:v=>v.toFixed(2)},
+          {l:"Max Concentration",cur:hs.length?Math.max(...hs.map(h=>port.totalMV?h.MV/port.totalMV*100:0)):0,lim:20,unit:"%",fmt:v=>v.toFixed(1)},
+        ].map((r,i)=>{
+          const pct=Math.min(100,(r.cur/r.lim)*100);
+          const col=pct>90?B.danger:pct>70?B.warning:B.green;
+          return(<div key={i} style={{marginBottom:14}}>
+            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+              <span style={{fontSize:11}}>{r.l}</span>
+              <span style={{fontSize:11,fontWeight:600,color:col}}>{r.fmt(r.cur)}{r.unit} / {r.lim}{r.unit}</span>
+            </div>
+            <div style={{height:5,background:B.parchment,borderRadius:3,overflow:"hidden"}}>
+              <div style={{height:"100%",width:`${pct}%`,background:col,borderRadius:3,transition:"width .6s"}}/>
+            </div>
+          </div>);
+        })}
+      </CC>
+    </div>
+  </div>);
+}
+
+/* ── HOLDINGS ── */
+function Holdings({hs,port,sel,setSel,flash,saving,updatePrice,deleteH,setEditH}){
+  return(<div>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+      <h2 style={{fontSize:16,fontWeight:700,color:B.cerulean}}>Portfolio Holdings</h2>
+      <span style={{fontSize:12,color:B.ash}}>{hs.length} instruments · {f.pkrB(port.totalMV)}</span>
+    </div>
+    <div style={{background:B.white,border:`1px solid ${B.border}`,borderRadius:8,overflow:"auto"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:900}}>
+        <thead>
+          <tr style={{background:B.cerulean,color:"#fff"}}>
+            {["Instrument","Type","Face Value","Mkt Value","Price","Yield","Duration","PVBP (M)","P&L","Rating","Actions"].map(h=>(
+              <th key={h} style={{padding:"9px 11px",textAlign:"left",fontSize:10,letterSpacing:".8px",textTransform:"uppercase",fontWeight:600,whiteSpace:"nowrap"}}>{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {hs.map((h,i)=>(
+            <tr key={h.id} className={`hrow ${flash[h.id]?"flash":""}`}
+              style={{background:i%2===0?B.white:B.cream,borderBottom:`1px solid ${B.border}`}}
+              onClick={()=>setSel(sel?.id===h.id?null:h)}>
+              <td style={{padding:"8px 11px",fontWeight:600,color:B.cerulean}}>{h.name}</td>
+              <td style={{padding:"8px 11px"}}><span style={{background:`${TYPE_C[h.instrument_type]||B.ash}22`,color:TYPE_C[h.instrument_type]||B.ash,padding:"2px 7px",borderRadius:3,fontSize:10,fontWeight:600}}>{h.instrument_type}</span></td>
+              <td style={{padding:"8px 11px"}}>{f.pkrB(+h.face_value)}</td>
+              <td style={{padding:"8px 11px",fontWeight:600}}>{f.pkrB(h.MV)}</td>
+              <td style={{padding:"8px 11px"}} onClick={e=>e.stopPropagation()}>
+                <input type="number" defaultValue={(+h.current_price||+h.purchase_price).toFixed(2)} step=".01"
+                  style={{width:68,padding:"2px 5px",border:`1px solid ${B.border}`,borderRadius:3,fontFamily:"Georgia,serif",fontSize:12,background:saving[h.id]?B.parchment:B.cream}}
+                  onBlur={e=>updatePrice(h.id,e.target.value)}
+                  onKeyDown={e=>{if(e.key==="Enter")updatePrice(h.id,e.target.value);}}/>
+              </td>
+              <td style={{padding:"8px 11px",color:B.green,fontWeight:600}}>{f.pct(h.yield)}</td>
+              <td style={{padding:"8px 11px"}}>{f.yrs(h.duration)}</td>
+              <td style={{padding:"8px 11px"}}>{(h.pvbp/1e6).toFixed(3)}</td>
+              <td style={{padding:"8px 11px",fontWeight:600,color:h.uPnL>=0?B.success:B.danger}}>
+                {h.uPnL>=0?"+":""}{f.pkrM(h.uPnL)}<span style={{fontSize:10,marginLeft:3}}>({h.uPnLPct.toFixed(2)}%)</span>
+              </td>
+              <td style={{padding:"8px 11px"}}><span style={{background:`${B.green}18`,color:B.greenD,padding:"2px 6px",borderRadius:3,fontSize:10,fontWeight:600}}>{h.rating}</span></td>
+              <td style={{padding:"8px 11px"}} onClick={e=>e.stopPropagation()}>
+                <button onClick={()=>setEditH(h)} style={{background:`${B.cerulean}15`,color:B.cerulean,border:"none",borderRadius:3,padding:"3px 8px",cursor:"pointer",fontSize:11,marginRight:3}}>Edit</button>
+                <button onClick={()=>{if(confirm(`Remove ${h.name}?`))deleteH(h.id);}} style={{background:`${B.danger}15`,color:B.danger,border:"none",borderRadius:3,padding:"3px 8px",cursor:"pointer",fontSize:11}}>Del</button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    {sel&&(
+      <div className="mov" style={{marginTop:12,background:B.white,border:`1px solid ${B.cerulean}40`,borderRadius:8,padding:18,borderLeft:`4px solid ${B.cerulean}`}}>
+        <h3 style={{fontSize:13,fontWeight:700,color:B.cerulean,marginBottom:12}}>{sel.name} — Analytics</h3>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10}}>
+          {[["Duration",f.yrs(sel.duration)],["Mod. Duration",f.yrs(sel.modDur)],
+            ["PVBP",`PKR ${(sel.pvbp/1e6).toFixed(3)}M`],["Accrued",f.pkrM(sel.accInt)],
+            ["To Maturity",f.yrs(sel.T)],["Buy Yield",f.pct(+sel.purchase_yield)],
+            ["Curr Yield",f.pct(sel.yield)],["Yield Δ",`${((sel.yield-(+sel.purchase_yield))*10000).toFixed(0)} bps`],
+            ["Carry",sel.cs?f.pct(sel.cs):"N/A"],["Daily Carry",sel.dc?f.pkrM(sel.dc):"N/A"],
+          ].map(([l,v],i)=>(
+            <div key={i} style={{background:B.surface,borderRadius:6,padding:"10px 13px"}}>
+              <div style={{fontSize:10,color:B.ash,letterSpacing:".7px",textTransform:"uppercase",marginBottom:3}}>{l}</div>
+              <div style={{fontSize:14,fontWeight:700,color:B.cerulean}}>{v}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    )}
+  </div>);
+}
+
+/* ── ANALYTICS ── */
+function Analytics({hs}){
+  return(<div>
+    <h2 style={{fontSize:16,fontWeight:700,color:B.cerulean,marginBottom:16}}>Fixed Income Analytics</h2>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+      <CC title="PVBP per Instrument (PKR M per bp)">
+        <ResponsiveContainer width="100%" height={210}>
+          <BarChart data={hs} layout="vertical" margin={{left:85}}>
+            <CartesianGrid strokeDasharray="3 3" stroke={B.border} horizontal={false}/>
+            <XAxis type="number" tick={{fontSize:8}} tickFormatter={v=>`${(v/1e6).toFixed(2)}M`}/>
+            <YAxis type="category" dataKey="name" tick={{fontSize:9}} width={85}/>
+            <Tooltip formatter={v=>`PKR ${(v/1e6).toFixed(3)}M`} contentStyle={{fontSize:11,fontFamily:"Georgia,serif"}}/>
+            <Bar dataKey="pvbp" radius={[0,3,3,0]}>{hs.map((h,i)=><Cell key={h.id} fill={TYPE_C[h.instrument_type]||CHART_C[i]}/>)}</Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </CC>
+      <CC title="Duration by Instrument (years)">
+        <ResponsiveContainer width="100%" height={210}>
+          <BarChart data={hs}>
+            <CartesianGrid strokeDasharray="3 3" stroke={B.border}/>
+            <XAxis dataKey="name" tick={{fontSize:8}} tickFormatter={v=>v.split(" ")[0]}/>
+            <YAxis tick={{fontSize:8}}/>
+            <Tooltip formatter={v=>`${v.toFixed(2)}y`} contentStyle={{fontSize:11,fontFamily:"Georgia,serif"}}/>
+            <Bar dataKey="duration" radius={[3,3,0,0]}>{hs.map((h,i)=><Cell key={h.id} fill={TYPE_C[h.instrument_type]||CHART_C[i]}/>)}</Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </CC>
+    </div>
+    <CC title="PKRV Yield Curve (Illustrative)">
+      <ResponsiveContainer width="100%" height={170}>
+        <LineChart data={[{t:"3M",y:12.45},{t:"6M",y:12.6},{t:"1Y",y:12.75},{t:"2Y",y:12.9},{t:"3Y",y:13.05},{t:"5Y",y:13.25},{t:"10Y",y:13.5}]}>
+          <CartesianGrid strokeDasharray="3 3" stroke={B.border}/>
+          <XAxis dataKey="t" tick={{fontSize:10}}/><YAxis tick={{fontSize:8}} domain={[12,14]} tickFormatter={v=>`${v}%`}/>
+          <Tooltip formatter={v=>`${v}%`} contentStyle={{fontSize:11,fontFamily:"Georgia,serif"}}/>
+          <Line type="monotone" dataKey="y" stroke={B.cerulean} strokeWidth={2.5} dot={{fill:B.cerulean,r:4}} name="PKRV"/>
+        </LineChart>
+      </ResponsiveContainer>
+    </CC>
+  </div>);
+}
+
+/* ── ATTRIBUTION ── */
+function Attribution({hs,port}){
+  const attr=hs.map(h=>({name:h.name,contrib:port.totalCV?(h.uPnL/port.totalCV)*100:0,inc:port.totalCV?(h.accInt/port.totalCV)*100:0,weight:port.totalMV?(h.MV/port.totalMV)*100:0}));
+  return(<div>
+    <h2 style={{fontSize:16,fontWeight:700,color:B.cerulean,marginBottom:16}}>Performance Attribution</h2>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16,marginBottom:16}}>
+      <CC title="Price Return Contribution (%)">
+        <ResponsiveContainer width="100%" height={200}>
+          <BarChart data={attr}>
+            <CartesianGrid strokeDasharray="3 3" stroke={B.border}/>
+            <XAxis dataKey="name" tick={{fontSize:8}} tickFormatter={v=>v.split(" ")[0]}/>
+            <YAxis tick={{fontSize:8}} tickFormatter={v=>`${v.toFixed(2)}%`}/>
+            <Tooltip formatter={v=>`${v.toFixed(3)}%`} contentStyle={{fontSize:11,fontFamily:"Georgia,serif"}}/>
+            <ReferenceLine y={0} stroke={B.slate}/>
+            <Bar dataKey="contrib" radius={[3,3,0,0]}>{attr.map((a,i)=><Cell key={i} fill={a.contrib>=0?B.green:B.danger}/>)}</Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </CC>
+      <CC title="Weight vs Income Contribution">
+        <ResponsiveContainer width="100%" height={200}>
+          <BarChart data={attr}>
+            <CartesianGrid strokeDasharray="3 3" stroke={B.border}/>
+            <XAxis dataKey="name" tick={{fontSize:8}} tickFormatter={v=>v.split(" ")[0]}/>
+            <YAxis tick={{fontSize:8}}/><Tooltip contentStyle={{fontSize:11,fontFamily:"Georgia,serif"}}/>
+            <Legend wrapperStyle={{fontSize:10}}/>
+            <Bar dataKey="weight" name="Weight (%)" fill={B.cerulean} opacity={.7} radius={[2,2,0,0]}/>
+            <Bar dataKey="inc" name="Income Contrib (%)" fill={B.green} radius={[2,2,0,0]}/>
+          </BarChart>
+        </ResponsiveContainer>
+      </CC>
+    </div>
+    <div style={{background:B.white,border:`1px solid ${B.border}`,borderRadius:8,overflow:"auto"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,minWidth:750}}>
+        <thead><tr style={{background:B.ceruleanD,color:"#fff"}}>
+          {["Holding","Type","Weight","Mkt Value","Unrlzd P&L","P&L %","Accrued","Price Contrib","Inc Contrib"].map(h=>(
+            <th key={h} style={{padding:"8px 12px",textAlign:"left",fontSize:10,letterSpacing:".8px",textTransform:"uppercase"}}>{h}</th>
+          ))}
+        </tr></thead>
+        <tbody>
+          {hs.map((h,i)=>{const a=attr[i];return(
+            <tr key={h.id} style={{background:i%2===0?B.white:B.cream,borderBottom:`1px solid ${B.border}`}}>
+              <td style={{padding:"8px 12px",fontWeight:600,color:B.cerulean}}>{h.name}</td>
+              <td style={{padding:"8px 12px",fontSize:11}}>{h.instrument_type}</td>
+              <td style={{padding:"8px 12px"}}>{a.weight.toFixed(1)}%</td>
+              <td style={{padding:"8px 12px"}}>{f.pkrB(h.MV)}</td>
+              <td style={{padding:"8px 12px",fontWeight:600,color:h.uPnL>=0?B.success:B.danger}}>{h.uPnL>=0?"+":""}{f.pkrM(h.uPnL)}</td>
+              <td style={{padding:"8px 12px",color:h.uPnLPct>=0?B.success:B.danger,fontWeight:600}}>{h.uPnLPct.toFixed(2)}%</td>
+              <td style={{padding:"8px 12px"}}>{f.pkrM(h.accInt)}</td>
+              <td style={{padding:"8px 12px",color:a.contrib>=0?B.success:B.danger,fontWeight:600}}>{a.contrib>=0?"+":""}{a.contrib.toFixed(3)}%</td>
+              <td style={{padding:"8px 12px",color:B.green,fontWeight:600}}>+{a.inc.toFixed(3)}%</td>
+            </tr>
+          );})}
+          <tr style={{background:`${B.cerulean}12`,fontWeight:700,borderTop:`2px solid ${B.cerulean}`}}>
+            <td colSpan={2} style={{padding:"8px 12px"}}>TOTAL</td>
+            <td style={{padding:"8px 12px"}}>100%</td>
+            <td style={{padding:"8px 12px"}}>{f.pkrB(port.totalMV)}</td>
+            <td style={{padding:"8px 12px",color:port.totUPnL>=0?B.success:B.danger}}>{port.totUPnL>=0?"+":""}{f.pkrM(port.totUPnL)}</td>
+            <td style={{padding:"8px 12px",color:port.totUPnL>=0?B.success:B.danger}}>{((port.totUPnL/(port.totalCV||1))*100).toFixed(2)}%</td>
+            <td style={{padding:"8px 12px"}}>{f.pkrM(port.totAI)}</td>
+            <td style={{padding:"8px 12px",color:B.success}}>+{attr.reduce((s,a)=>s+a.contrib,0).toFixed(3)}%</td>
+            <td style={{padding:"8px 12px",color:B.green}}>+{attr.reduce((s,a)=>s+a.inc,0).toFixed(3)}%</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>);
+}
+
+/* ── RISK ── */
+function Risk({hs,port}){
+  const maxConc=hs.length&&port.totalMV?Math.max(...hs.map(h=>h.MV/port.totalMV*100)):0;
+  const ratingDist=Object.entries(hs.reduce((acc,h)=>{acc[h.rating]=(acc[h.rating]||0)+h.MV;return acc;},{})).map(([name,value])=>({name,value}));
+  return(<div>
+    <h2 style={{fontSize:16,fontWeight:700,color:B.cerulean,marginBottom:16}}>Risk Management</h2>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:18}}>
+      {[
+        {l:"Portfolio Duration",v:f.yrs(port.wDur),lim:"2.50y",s:port.wDur<2?"OK":port.wDur<2.5?"WATCH":"BREACH",c:port.wDur<2?B.success:B.warning},
+        {l:"Total PVBP",v:`PKR ${(port.totPVBP/1e6).toFixed(2)}M`,lim:"PKR 3.00M",s:port.totPVBP<2.5e6?"OK":"WATCH",c:port.totPVBP<2.5e6?B.success:B.warning},
+        {l:"Max Issuer Conc.",v:`${maxConc.toFixed(1)}%`,lim:"20%",s:maxConc<20?"OK":"BREACH",c:maxConc<20?B.success:B.danger},
+        {l:"Sub-Inv Grade",v:"0%",lim:"5%",s:"OK",c:B.success},
+      ].map((r,i)=>(
+        <div key={i} className="kcard" style={{background:B.white,border:`1px solid ${B.border}`,borderRadius:8,padding:"14px 16px",borderLeft:`4px solid ${r.c}`}}>
+          <div style={{fontSize:10,color:B.ash,letterSpacing:"1px",textTransform:"uppercase",marginBottom:6}}>{r.l}</div>
+          <div style={{fontSize:19,fontWeight:700,color:r.c,marginBottom:4}}>{r.v}</div>
+          <div style={{display:"flex",justifyContent:"space-between"}}>
+            <span style={{fontSize:11,color:B.ash}}>Limit: {r.lim}</span>
+            <span style={{fontSize:10,fontWeight:700,color:r.c,background:`${r.c}20`,padding:"2px 7px",borderRadius:3}}>{r.s}</span>
+          </div>
+        </div>
+      ))}
+    </div>
+    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+      <CC title="Issuer Concentration (%)">
+        <ResponsiveContainer width="100%" height={200}>
+          <BarChart data={hs.map(h=>({name:h.name,pct:port.totalMV?h.MV/port.totalMV*100:0}))}>
+            <CartesianGrid strokeDasharray="3 3" stroke={B.border}/>
+            <XAxis dataKey="name" tick={{fontSize:8}} tickFormatter={v=>v.split(" ")[0]}/>
+            <YAxis tick={{fontSize:8}} tickFormatter={v=>`${v}%`}/>
+            <Tooltip formatter={v=>`${v.toFixed(1)}%`} contentStyle={{fontSize:11,fontFamily:"Georgia,serif"}}/>
+            <ReferenceLine y={20} stroke={B.danger} strokeDasharray="4 4" label={{value:"20%",fontSize:9,fill:B.danger}}/>
+            <Bar dataKey="pct" radius={[3,3,0,0]}>{hs.map((h,i)=><Cell key={h.id} fill={(port.totalMV&&h.MV/port.totalMV*100>20)?B.danger:B.cerulean}/>)}</Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </CC>
+      <CC title="Rating Distribution">
+        <ResponsiveContainer width="100%" height={200}>
+          <PieChart>
+            <Pie data={ratingDist} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={75} paddingAngle={3}>
+              {ratingDist.map((_,i)=><Cell key={i} fill={CHART_C[i%CHART_C.length]}/>)}
+            </Pie>
+            <Tooltip formatter={v=>f.pkrB(v)} contentStyle={{fontSize:11,fontFamily:"Georgia,serif"}}/>
+            <Legend iconSize={8} wrapperStyle={{fontSize:10}}/>
+          </PieChart>
+        </ResponsiveContainer>
+      </CC>
+    </div>
+  </div>);
+}
+
+/* ── CARRY ── */
+function Carry({hs}){
+  const funded=hs.filter(h=>h.is_funded);
+  if(!funded.length)return(<div style={{background:B.white,border:`1px solid ${B.border}`,borderRadius:8,padding:48,textAlign:"center",marginTop:16}}>
+    <div style={{fontSize:14,fontWeight:600,color:B.cerulean,marginBottom:8}}>No carry trades active</div>
+    <div style={{fontSize:12,color:B.ash}}>Mark a holding as repo-funded when adding or editing</div>
+  </div>);
+  const totFMV=funded.reduce((s,h)=>s+h.MV,0);
+  const totDC=funded.reduce((s,h)=>s+(h.dc||0),0);
+  const avgCS=funded.reduce((s,h)=>s+(h.cs||0)*h.MV,0)/totFMV;
+  return(<div>
+    <h2 style={{fontSize:16,fontWeight:700,color:B.cerulean,marginBottom:16}}>Carry Trade Analysis</h2>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
+      {[{l:"Funded AUM",v:f.pkrB(totFMV),c:B.cerulean},{l:"Daily Carry",v:f.pkrM(totDC),c:B.green},
+        {l:"Avg Carry Spread",v:f.pct(avgCS),c:B.warning},{l:"Annual Carry",v:f.pkrM(totDC*365),c:B.green}
+      ].map((k,i)=>(
+        <div key={i} className="kcard" style={{background:B.white,border:`1px solid ${B.border}`,borderRadius:8,padding:"14px 16px",borderTop:`3px solid ${k.c}`}}>
+          <div style={{fontSize:10,color:B.ash,letterSpacing:"1px",textTransform:"uppercase",marginBottom:6}}>{k.l}</div>
+          <div style={{fontSize:19,fontWeight:700,color:k.c}}>{k.v}</div>
+        </div>
+      ))}
+    </div>
+    <div style={{background:B.white,border:`1px solid ${B.border}`,borderRadius:8,overflow:"auto"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+        <thead><tr style={{background:B.cerulean,color:"#fff"}}>
+          {["Instrument","Mkt Value","Inv Yield","Repo Rate","Carry Spread","Daily Carry","Annual Carry","Net P&L"].map(h=>(
+            <th key={h} style={{padding:"8px 12px",textAlign:"left",fontSize:10,letterSpacing:".8px",textTransform:"uppercase"}}>{h}</th>
+          ))}
+        </tr></thead>
+        <tbody>
+          {funded.map((h,i)=>(
+            <tr key={h.id} style={{background:i%2===0?B.white:B.cream,borderBottom:`1px solid ${B.border}`}}>
+              <td style={{padding:"8px 12px",fontWeight:600,color:B.cerulean}}>{h.name}</td>
+              <td style={{padding:"8px 12px"}}>{f.pkrB(h.MV)}</td>
+              <td style={{padding:"8px 12px",color:B.green,fontWeight:600}}>{f.pct(h.yield)}</td>
+              <td style={{padding:"8px 12px",color:B.warning}}>{f.pct(+h.repo_rate)}</td>
+              <td style={{padding:"8px 12px",fontWeight:700,color:h.cs>0?B.success:B.danger}}>{f.pct(h.cs)} ({(h.cs*10000).toFixed(0)} bps)</td>
+              <td style={{padding:"8px 12px",color:B.success,fontWeight:600}}>{f.pkrM(h.dc)}</td>
+              <td style={{padding:"8px 12px",color:B.success,fontWeight:600}}>{f.pkrM(h.dc*365)}</td>
+              <td style={{padding:"8px 12px",color:h.uPnL+h.accInt>0?B.success:B.danger,fontWeight:600}}>{f.pkrM(h.uPnL+h.accInt)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </div>);
+}
+
+/* ── SCENARIOS ── */
+function Scenarios({hs,port,shift,setShift,scen}){
+  const presets=[{l:"+25bps — Mild",s:25},{l:"+100bps — Hike",s:100},{l:"+200bps — Crisis",s:200},{l:"−100bps — Cut",s:-100}];
+  return(<div>
+    <h2 style={{fontSize:16,fontWeight:700,color:B.cerulean,marginBottom:16}}>Interest Rate Scenarios</h2>
+    <CC title="Parallel Rate Shift">
+      <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:18}}>
+        <span style={{fontSize:12}}>Shift:</span>
+        <input type="range" min="-200" max="200" step="25" value={shift} onChange={e=>setShift(+e.target.value)} style={{flex:1}}/>
+        <span style={{fontSize:16,fontWeight:700,color:shift<0?B.success:shift>0?B.danger:B.slate,minWidth:68}}>{shift>0?"+":""}{shift} bps</span>
+      </div>
+      {scen?(<div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12}}>
+        <div style={{background:scen.mvChange>=0?`${B.green}15`:`${B.danger}15`,borderRadius:8,padding:"14px 16px"}}>
+          <div style={{fontSize:10,color:B.ash,textTransform:"uppercase",letterSpacing:"1px",marginBottom:4}}>MV Change</div>
+          <div style={{fontSize:20,fontWeight:700,color:scen.mvChange>=0?B.success:B.danger}}>{scen.mvChange>=0?"+":""}{f.pkrB(scen.mvChange)}</div>
+        </div>
+        <div style={{background:`${B.cerulean}10`,borderRadius:8,padding:"14px 16px"}}>
+          <div style={{fontSize:10,color:B.ash,textTransform:"uppercase",letterSpacing:"1px",marginBottom:4}}>% Change</div>
+          <div style={{fontSize:20,fontWeight:700,color:scen.pct>=0?B.success:B.danger}}>{scen.pct>=0?"+":""}{scen.pct.toFixed(2)}%</div>
+        </div>
+        <div style={{background:B.parchment,borderRadius:8,padding:"14px 16px"}}>
+          <div style={{fontSize:10,color:B.ash,textTransform:"uppercase",letterSpacing:"1px",marginBottom:4}}>PVBP × Shift</div>
+          <div style={{fontSize:20,fontWeight:700,color:B.cerulean}}>PKR {((port.totPVBP*Math.abs(shift))/1e6).toFixed(2)}M</div>
+        </div>
+      </div>):(<div style={{textAlign:"center",padding:14,color:B.ash,fontSize:13}}>Move the slider to simulate a yield curve shift</div>)}
+    </CC>
+    <div style={{marginTop:16,fontSize:13,fontWeight:700,color:B.cerulean,marginBottom:10}}>Stress Scenarios</div>
+    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12}}>
+      {presets.map((sc,i)=>{
+        const s2=sc.s/100;
+        const newMV=hs.reduce((sum,h)=>{
+          const ny=h.yield+s2;let np=+h.current_price||+h.purchase_price;
+          if(!["Placement","Mutual Fund"].includes(h.instrument_type))
+            np=FI.bondPrice(+h.face_value,+h.coupon_rate||h.yield,ny,h.T)/+h.face_value*100;
+          return sum+(+h.face_value)*(np/100);
+        },0);
+        const mvC=newMV-port.totalMV,pctC=port.totalMV?(mvC/port.totalMV)*100:0;
+        return(<div key={i} className="kcard" style={{background:B.white,border:`1px solid ${B.border}`,borderRadius:8,padding:16,cursor:"pointer",borderTop:`3px solid ${sc.s<0?B.green:sc.s<100?B.warning:B.danger}`}} onClick={()=>setShift(sc.s)}>
+          <div style={{fontSize:11,fontWeight:700,color:B.cerulean,marginBottom:8}}>{sc.l}</div>
+          <div style={{fontSize:20,fontWeight:700,color:mvC>=0?B.success:B.danger}}>{pctC>=0?"+":""}{pctC.toFixed(2)}%</div>
+          <div style={{fontSize:12,color:mvC>=0?B.success:B.danger}}>{mvC>=0?"+":""}{f.pkrB(mvC)}</div>
+        </div>);
+      })}
+    </div>
+  </div>);
+}
+
+/* ── MODAL ── */
+function Modal({mode,initial,onClose,onSave}){
+  const blank={name:"",issuer:"",type:"Corporate Bond",instrument_type:"Corporate Bond",face_value:100e6,coupon_rate:.13,maturity_date:"",purchase_date:new Date().toISOString().slice(0,10),purchase_yield:.13,purchase_price:100,current_yield:.13,current_price:100,rating:"A",sector:"Financial Services",is_funded:false,repo_rate:"",custodian:"CDC",accrual_days:0,notes:""};
+  const[form,setForm]=useState(initial?{...initial,type:initial.instrument_type||initial.type}:blank);
+  const set=(k,v)=>setForm(f=>({...f,[k]:v}));
+  const F=({l,k,type="text",step})=>(<div style={{marginBottom:10}}>
+    <label style={{fontSize:10,color:B.ash,letterSpacing:".7px",textTransform:"uppercase",display:"block",marginBottom:3}}>{l}</label>
+    <input type={type} step={step} value={form[k]??""} onChange={e=>set(k,type==="number"?parseFloat(e.target.value)||0:e.target.value)}
+      style={{width:"100%",padding:"7px 9px",border:`1px solid ${B.border}`,borderRadius:4,fontFamily:"Georgia,serif",fontSize:12}}/>
+  </div>);
+  const S=({l,k,opts})=>(<div style={{marginBottom:10}}>
+    <label style={{fontSize:10,color:B.ash,letterSpacing:".7px",textTransform:"uppercase",display:"block",marginBottom:3}}>{l}</label>
+    <select value={form[k]} onChange={e=>set(k,e.target.value)} style={{width:"100%",padding:"7px 9px",border:`1px solid ${B.border}`,borderRadius:4,fontFamily:"Georgia,serif",fontSize:12}}>
+      {opts.map(o=><option key={o} value={o}>{o}</option>)}
+    </select>
+  </div>);
+  return(<div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:200}} onClick={e=>e.target===e.currentTarget&&onClose()}>
+    <div className="mov" style={{background:B.white,borderRadius:8,width:640,maxHeight:"88vh",overflow:"auto",boxShadow:"0 24px 64px rgba(0,0,0,.2)"}}>
+      <div style={{background:B.cerulean,padding:"13px 20px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+        <span style={{color:"#fff",fontWeight:700,fontSize:13}}>{mode==="add"?"Add New Holding":`Edit: ${initial?.name}`}</span>
+        <button onClick={onClose} style={{background:"none",border:"none",color:B.lightAsh,cursor:"pointer",fontSize:17}}>✕</button>
+      </div>
+      <div style={{padding:20}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 16px"}}>
+          <F l="Name" k="name"/>
+          <F l="Issuer" k="issuer"/>
+          <S l="Type" k="type" opts={["PIB","T-Bill","Corporate Bond","Sukuk","Placement","Mutual Fund","Commercial Paper"]}/>
+          <S l="Sector" k="sector" opts={["Government","Banking","Financial Services","Energy","Industrial","Fund","Telecom","Other"]}/>
+          <F l="Face Value (PKR)" k="face_value" type="number"/>
+          <F l="Coupon Rate (0.135 = 13.5%)" k="coupon_rate" type="number" step=".0001"/>
+          <F l="Purchase Date" k="purchase_date" type="date"/>
+          <F l="Maturity Date" k="maturity_date" type="date"/>
+          <F l="Purchase Price (% of face)" k="purchase_price" type="number" step=".01"/>
+          <F l="Purchase Yield (0.135)" k="purchase_yield" type="number" step=".0001"/>
+          <F l="Current Price" k="current_price" type="number" step=".01"/>
+          <F l="Current Yield" k="current_yield" type="number" step=".0001"/>
+          <F l="Rating" k="rating"/>
+          <F l="Custodian" k="custodian"/>
+          <F l="Accrual Days" k="accrual_days" type="number"/>
+          <div style={{marginBottom:10}}>
+            <label style={{fontSize:10,color:B.ash,letterSpacing:".7px",textTransform:"uppercase",display:"block",marginBottom:3}}>Repo-Funded?</label>
+            <div style={{display:"flex",gap:10,alignItems:"center"}}>
+              <label style={{display:"flex",gap:6,alignItems:"center",fontSize:12,cursor:"pointer"}}>
+                <input type="checkbox" checked={!!form.is_funded} onChange={e=>set("is_funded",e.target.checked)}/> Yes
+              </label>
+              {form.is_funded&&<input type="number" step=".001" value={form.repo_rate||""} placeholder="Repo rate e.g. 0.125" onChange={e=>set("repo_rate",e.target.value)}
+                style={{flex:1,padding:"6px 9px",border:`1px solid ${B.border}`,borderRadius:4,fontFamily:"Georgia,serif",fontSize:12}}/>}
+            </div>
+          </div>
+          <F l="Notes" k="notes"/>
+        </div>
+        <div style={{display:"flex",gap:8,marginTop:6}}>
+          <button onClick={onClose} style={{flex:1,padding:"9px",background:B.surface,border:`1px solid ${B.border}`,borderRadius:4,cursor:"pointer",fontFamily:"Georgia,serif",fontSize:12,color:B.ash}}>Cancel</button>
+          <button onClick={()=>onSave({...form,instrument_type:form.type||form.instrument_type})} style={{flex:2,padding:"9px",background:B.cerulean,border:"none",borderRadius:4,cursor:"pointer",fontFamily:"Georgia,serif",fontSize:13,color:"#fff",fontWeight:700}}>
+            {mode==="add"?"Add to Portfolio":"Save Changes"}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>);
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+</body>
+</html>
